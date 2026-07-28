@@ -25,10 +25,6 @@
     "src/**/*"
   ],
   "exclude": [
-    "node_modules",
-    "src/web/ui",
-    "src/web/vite.config.ts",
-    "src/shared/**/*.tsx",
-    "src/shared/hooks"
+    "node_modules"
   ]
 }
