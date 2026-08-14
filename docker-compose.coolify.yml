@@ -1,0 +1,119 @@
+# Coolify Docker Compose stack for Mastra Factory.
+# Auth: WorkOS. Integrations: self-hosted GitHub + Linear.
+#
+# In Coolify: New Resource → Docker Compose → set Compose file to
+# `docker-compose.coolify.yml` (keep the default `docker-compose.yml` for
+# local `npm run db:up`).
+#
+# Domains: assign a domain to the `app` service (map to container port 4111).
+# Coolify fills `SERVICE_URL_APP` / `SERVICE_FQDN_APP` from that domain — no
+# port suffix, so the public URL stays on 443/80 via the proxy.
+#
+# After deploy, register these callbacks against your public origin:
+#   WorkOS  → <origin>/auth/callback
+#   GitHub  → <origin>/auth/github/callback  (also Setup URL)
+#   Linear  → <origin>/auth/linear/callback
+#   GitHub webhook (optional) → <origin>/web/github/webhook
+#
+# Fill WorkOS / GitHub App / Linear values in Coolify’s environment editor.
+# Model provider keys can also be set there or later in Settings › Models.
+#
+# Do not publish host ports for Postgres/Redis; Coolify’s proxy only needs `app`.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - '4111'
+    environment:
+      # Coolify magic — public URL from the domain assigned to this service.
+      # No `_4111` suffix: public origin must not include the container port.
+      - SERVICE_URL_APP
+      - SERVICE_FQDN_APP
+      # Coolify magic — shared random Postgres password (also used below).
+      - SERVICE_PASSWORD_POSTGRES
+      # Coolify magic — session cookie seal + webhook/state signing secrets.
+      - SERVICE_PASSWORD_64_WORKOS
+      - SERVICE_PASSWORD_64_GITHUBWEBHOOK
+
+      - NODE_ENV=production
+      - PORT=4111
+      - MASTRA_HOST=0.0.0.0
+      - MASTRA_SKIP_DOTENV=1
+
+      - MASTRACODE_PUBLIC_URL=${SERVICE_URL_APP}
+      - MASTRACODE_CHANNELS_PUBLIC_URL=${SERVICE_URL_APP}
+      - MASTRACODE_LOCAL_SANDBOX_ROOT=/data/sandboxes
+
+      - DATABASE_URL=postgres://${POSTGRES_USER:-user}:${SERVICE_PASSWORD_POSTGRES}@app-db:5432/${POSTGRES_DB:-mastracode_web}
+      - REDIS_URL=redis://redis:6379
+
+      # --- WorkOS auth (required for GitHub + Linear org features) ---
+      - WORKOS_API_KEY=${WORKOS_API_KEY}
+      - WORKOS_CLIENT_ID=${WORKOS_CLIENT_ID}
+      - WORKOS_COOKIE_PASSWORD=${SERVICE_PASSWORD_64_WORKOS}
+      # Optional override; defaults to MASTRACODE_PUBLIC_URL + /auth/callback
+      - WORKOS_REDIRECT_URI=${WORKOS_REDIRECT_URI:-}
+
+      # --- GitHub App ---
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      # PEM lives in a Coolify Team shared variable (Team → Shared Variables).
+      - GITHUB_APP_PRIVATE_KEY={{team.GITHUB_APP_PRIVATE_KEY}}
+      - GITHUB_APP_CLIENT_ID=${GITHUB_APP_CLIENT_ID}
+      - GITHUB_APP_CLIENT_SECRET=${GITHUB_APP_CLIENT_SECRET}
+      - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
+      - GITHUB_APP_WEBHOOK_SECRET=${SERVICE_PASSWORD_64_GITHUBWEBHOOK}
+
+      # --- Linear OAuth ---
+      - LINEAR_CLIENT_ID=${LINEAR_CLIENT_ID}
+      - LINEAR_CLIENT_SECRET=${LINEAR_CLIENT_SECRET}
+
+      # --- Model providers (optional; can also be set in the UI) ---
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
+      - factory-sandboxes:/data/sandboxes
+    depends_on:
+      app-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:4111/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+  app-db:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    environment:
+      - SERVICE_PASSWORD_POSTGRES
+      - POSTGRES_USER=${POSTGRES_USER:-user}
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - POSTGRES_DB=${POSTGRES_DB:-mastracode_web}
+    volumes:
+      - factory-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  factory-pgdata:
+  factory-sandboxes:
