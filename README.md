@@ -16,9 +16,10 @@ npm run dev
 ```
 
 - **Factory UI** → http://localhost:4111
+- **Studio** → http://localhost:4111/studio (Agent Editor enabled)
 - **API** → http://localhost:4111/api
 
-One server serves both the UI and the API.
+One server serves the Factory UI, Studio, and the API.
 
 With zero configuration the app runs in local, auth-less mode (agents + local storage, no integrations). Open the Factory UI to finish setup — model provider keys are added there (Settings › Models). Deployment-level features enable themselves as you add environment variables — see below.
 
@@ -84,9 +85,9 @@ Slack only delivers events to public HTTPS origins, so local development needs a
 
 | Script                      | What it does                                                                        |
 | --------------------------- | ----------------------------------------------------------------------------------- |
-| `npm run dev`               | Factory server (:4111) serving the UI and the API                                   |
+| `npm run dev`               | Factory + Studio server (:4111) — Factory at `/`, Studio at `/studio`               |
 | `npm run db:up` / `db:down` | Start/stop local Postgres + Redis (Docker)                                          |
-| `npm run build`             | Bundle the server and copy the CLI-bundled Factory UI to `.mastra/output`           |
+| `npm run build`             | Bundle the server, Factory UI, and Studio into `.mastra/output`                     |
 | `npm run start`             | Run the production build                                                            |
 | `npm run deploy`            | Build and deploy to [Mastra Cloud](https://mastra.ai/docs/mastra-platform/overview) |
 | `npm run check`             | Typecheck the Factory server                                                        |

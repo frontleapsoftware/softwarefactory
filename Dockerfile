@@ -25,7 +25,7 @@ COPY src ./src
 ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
-RUN npx mastra build --dir src/mastra
+RUN npx mastra build --dir src/mastra --studio
 
 # ---------------------------------------------------------------------------
 
@@ -51,7 +51,7 @@ RUN useradd --create-home --uid 1001 --shell /usr/sbin/nologin mastra \
   && mkdir -p /data/sandboxes \
   && chown -R mastra:mastra /data
 
-# `.mastra/output` is self-contained (index.mjs + production node_modules).
+# `.mastra/output` is self-contained (index.mjs + production node_modules + studio/).
 COPY --from=builder --chown=mastra:mastra /app/.mastra/output ./
 
 USER mastra
@@ -60,6 +60,7 @@ ENV NODE_ENV=production
 ENV PORT=4111
 ENV MASTRA_HOST=0.0.0.0
 ENV MASTRA_SKIP_DOTENV=1
+ENV MASTRA_STUDIO_PATH=/app/studio
 ENV MASTRACODE_LOCAL_SANDBOX_ROOT=/data/sandboxes
 
 EXPOSE 4111
