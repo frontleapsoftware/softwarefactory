@@ -1,0 +1,10 @@
+node_modules
+.mastra
+.git
+.gitignore
+.env
+.env.*
+!.env.schema
+*.log
+.DS_Store
+README.md

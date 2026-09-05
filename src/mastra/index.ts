@@ -20,6 +20,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Mastra } from '@mastra/core/mastra';
+import type { IMastraAuthProvider, Middleware } from '@mastra/core/server';
 import { LibSQLFactoryStorage } from '@mastra/libsql';
 import { PgVector, PgFactoryStorage } from '@mastra/pg';
 import { LocalSandbox } from '@mastra/core/workspace';
@@ -29,12 +30,40 @@ import { RedisStreamsPubSub } from '@mastra/redis-streams';
 import { getDatabasePath } from '@mastra/code-sdk/utils/project';
 import { DEFAULT_RETENTION } from '@mastra/code-sdk/utils/storage-maintenance';
 import { MastraAuthWorkos } from '@mastra/auth-workos';
+import { MastraEditor } from '@mastra/editor';
 import { createFactorySecretEncryption, MastraFactory } from '@mastra/factory';
 import { GithubIntegration } from '@mastra/factory/integrations/github/integration';
 import { parseAuthorizedBotsEnv } from '@mastra/factory/integrations/github/webhook';
 import { LinearIntegration } from '@mastra/factory/integrations/linear/integration';
 import { SlackIntegration } from '@mastra/factory/integrations/slack/integration';
-import type { IMastraAuthProvider } from '@mastra/core/server';
+
+/** Studio UI base path — keeps Factory SPA at `/` and Studio at `/studio`. */
+const STUDIO_BASE = '/studio';
+
+type MiddlewareHandler = Extract<Middleware, (...args: never[]) => unknown>;
+
+/**
+ * Factory's SPA middleware answers every HTML navigation (including `/studio`).
+ * Pass those requests through so the deployer can serve Studio at `studioBase`.
+ */
+function skipStudioBase(handler: MiddlewareHandler): MiddlewareHandler {
+  return async (c, next) => {
+    const path = c.req.path;
+    if (path === STUDIO_BASE || path.startsWith(`${STUDIO_BASE}/`)) {
+      return next();
+    }
+    return handler(c, next);
+  };
+}
+
+function withStudioBasePassthrough(middleware: Middleware | Middleware[] | undefined): Middleware | Middleware[] | undefined {
+  if (!middleware) return middleware;
+  const list = Array.isArray(middleware) ? middleware : [middleware];
+  return list.map(entry => {
+    if (typeof entry === 'function') return skipStudioBase(entry);
+    return { ...entry, handler: skipStudioBase(entry.handler) };
+  });
+}
 
 /**
  * Parse a positive-integer env knob; anything else means "use the default".
@@ -348,12 +377,27 @@ export const factory = new MastraFactory({
 
 const preparedArgs = await factory.prepare();
 
+// Studio auth: use the same WorkOS (or platform) provider Factory configured.
+// `prepare()` already puts it on `studio.auth` when auth is enabled; set it
+// explicitly here so Studio cannot end up with auth enabled but no provider.
+const studioAuth = auth ?? preparedArgs.studio?.auth;
+
 // Construct the server-owned Mastra HERE so the `new Mastra(...)` literal lives
 // in the entry file (see module docs). `prepare()` returns the constructor args
 // carrying the controller (via `agentControllers`), storage, and the assembled
 // `server` config (middleware + apiRoutes + cors).
+//
+// Studio is mounted at `/studio` (Factory UI stays at `/`). Agent Editor is
+// enabled so collaborators can edit agent instructions/tools from Studio.
 export const mastra = new Mastra({
   ...preparedArgs,
+  editor: new MastraEditor(),
+  ...(studioAuth ? { studio: { ...preparedArgs.studio, auth: studioAuth } } : {}),
+  server: {
+    ...preparedArgs.server,
+    studioBase: STUDIO_BASE,
+    middleware: withStudioBasePassthrough(preparedArgs.server?.middleware),
+  },
 });
 
 // Post-construct boot: initialize the controller (which now inherits this

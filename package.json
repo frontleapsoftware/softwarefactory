@@ -6,12 +6,12 @@
   "type": "module",
   "license": "Apache-2.0",
   "scripts": {
-    "dev": "mastra factory dev --dir src/mastra",
+    "dev": "node scripts/dev.mjs",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
     "check": "tsc --noEmit",
-    "build": "mastra build --dir src/mastra",
-    "start": "varlock run -- mastra start",
+    "build": "mastra build --dir src/mastra --studio",
+    "start": "varlock run -- env MASTRA_STUDIO_PATH=studio mastra start",
     "deploy": "mastra deploy"
   },
   "dependencies": {
